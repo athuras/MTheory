@@ -26,19 +26,21 @@ def validate(note_string):
 class Note(object):
   '''
   A data structure for identifying a note in an equal temperment scale.
+  Internal note representation is an integer, with 0 corresponding to the reference pitch A4.
 
-  Preferred initialization using `Note.parse`.
+  Preferred initialization using the class-methods
+    Note.parse
+    Note.from_midi
+    Note.from_frequency
   '''
-  __slots__ = ['_semitone_id', 'octave']
+  __slots__ = ['_semitone']
 
-  def __init__(self, semitone_id, octave):
-    self._semitone_id = semitone_id
-    self.octave = octave
+  def __init__(self, semitone):
+    self._semitone = semitone
 
   def __eq__(self, other):
     if isinstance(other, self.__class__):
-      return (self._semitone_id == other._semitone_id and
-              self.octave == other.octave)
+      return self._semitone == other._semitone
     else:
       return False
 
@@ -49,55 +51,60 @@ class Note(object):
     return '%s(%s)' % (self.__class__.__name__, self.name)
 
   @property
-  def name(self):
-    '''i.e. A#3'''
-    return _SID_TO_NAME[self._semitone_id] + str(self.octave)
+  def midi_value(self):
+    return self._semitone + 69
 
-  @property
+  @classmethod
+  def from_midi_value(cls, midi_value):
+    # note: 69 = A4 = Note(0)
+    return cls(midi_value - 69)
+
   def frequency(self, reference=440.0):
     '''
     :reference [hz] is used to define the frequency of A4.
     '''
-    semitone_offset = 12 * (self.octave - 4) + self._semitone_id
-    return reference * math.pow(2.0, semitone_offset  / 12.0)
-
-  @property
-  def midi(self):
-    return ((12 * self.octave - 4) + self._semitone_id) + 69
-
-  @classmethod
-  def from_midi(cls, midi_value):
-    octave, semi = divmod(midi_value - 69, 12)
-    return cls(semi, octave + 4)
+    return reference * math.pow(2.0, self._semitone  / 12.0)
 
   @classmethod
   def from_frequency(cls, frequency, reference=440.0):
     '''
     Find the closest note to the provided frequency.
     :reference [hz] is used to define the frequency of A4.
+
+    EXAMPLE:
+    >>> Note.from_frequency(440)
+    Note(A4)
+    >>> Note.from_frequency(450)
+    Note(A4)
     '''
-    n = 12 * (math.log(frequency) - math.log(reference)) / math.log(2)
+    n = 12 * math.log(frequency / reference, 2)
     low, high = math.floor(n), math.ceil(n)
     low_err = n - low
     high_err = high - n
     i = math.trunc(low) if low_err < high_err else math.trunc(high)
-    octave, si = divmod(i, 12)
-    return cls(si, octave + 4)
+    return cls(i)
+
+  @property
+  def name(self):
+    '''Canonical note name, i.e. "A4", "G#-2".'''
+    octave, root = divmod(self._semitone, 12)
+    return _SID_TO_NAME[root] + str(octave + 4)
 
   @classmethod
-  def parse(cls, note_string):
+  def from_name(cls, note_string):
     '''
-    Parse the provided note string,
+    Parse the provided canonical note string.
     returns a `Note` instance if parsing is successful, otherwise `None`.
 
     EXAMPLE:
-      Note.parse("A#3") # => Note(A#, 3)
-
-    Naive implementation uses string 'in' operator, so deal with it.
+    >>> Note.parse("A#3")
+    Note(A#3)
+    >>> print(Note.parse("INVALID"))
+    None
     '''
     if not validate(note_string): return None
     note = re.match(r"([A-Z]).+", note_string)
-    semitone_id = _NAME_TO_SID.get(note.groups()[0], None) if note else None
+    root = _NAME_TO_SID.get(note.groups()[0], None) if note else None
     modifier = 0
     if '#' in note_string:
       modifier += 1
@@ -109,7 +116,7 @@ class Note(object):
     octave = re.match(r"[A-Z][#b]?-?(\d+)", note_string)
     octave = int(octave.groups()[0]) * sign if octave else None
 
-    if semitone_id is None or octave is None:
+    if root is None or octave is None:
       return None
     else:
-      return cls(semitone_id + modifier, octave)
+      return cls((octave - 4) * 12 + root + modifier)
