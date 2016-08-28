@@ -37,8 +37,8 @@ class Note(object):
 
   def __eq__(self, other):
     if isinstance(other, self.__class__):
-        return (self._semitone_id == other._semitone_id and
-                self.octave == other.octave)
+      return (self._semitone_id == other._semitone_id and
+              self.octave == other.octave)
     else:
       return False
 
